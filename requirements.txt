@@ -1,0 +1,17 @@
+# PostgreSQL
+alembic==1.13.2
+asyncpg==0.29.0
+SQLAlchemy==2.0.31
+
+# FastAPI
+fastapi==0.111.1
+pydantic==2.8.2
+pydantic-settings==2.3.4
+uvicorn==0.30.3
+orjson==3.10.6
+pyjwt[crypto]==2.8.0
+pwdlib[argon2,bcrypt]==0.2.0
+makefun==1.15.4
+
+# Development
+black==24.4.2
