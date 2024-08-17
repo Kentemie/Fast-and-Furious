@@ -1,3 +1,3 @@
 __all__ = ("adapter",)
 
-from .adapter import adapter
+from .main import adapter
