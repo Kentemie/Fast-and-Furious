@@ -263,6 +263,7 @@ class UserManager:
         Authenticate and return a user following an email and a password.
 
         :param credentials: The user credentials.
+        :return: The user if successful.
         """
         try:
             user = await self.get_by_email(credentials.username)

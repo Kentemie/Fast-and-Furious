@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -28,7 +28,17 @@ def get_auth_router(
         tags=["Auth"],
     )
 
-    get_current_user_token = authenticator.get_current_user_token(
+    get_current_active_user_access_token = authenticator.get_current_user_token(
+        required_token_type=settings.AUTH.ACCESS_TOKEN,
+        verified=requires_verification,
+    )
+    get_current_user_refresh_token = authenticator.get_current_user_token(
+        required_token_type=settings.AUTH.REFRESH_TOKEN,
+        optional=True,
+        verified=requires_verification,
+    )
+    get_current_active_user_refresh_token = authenticator.get_current_user_token(
+        required_token_type=settings.AUTH.REFRESH_TOKEN,
         verified=requires_verification,
     )
 
@@ -62,6 +72,16 @@ def get_auth_router(
         **auth_backend.transport.get_openapi_logout_responses_success(),
     }
 
+    refresh_responses: "OpenAPIResponseType" = {
+        **{
+            status.HTTP_401_UNAUTHORIZED: {
+                "description": "The refresh token is missed."
+            },
+            status.HTTP_403_FORBIDDEN: {"description": "The user is not verified."},
+        },
+        **auth_backend.transport.get_openapi_login_responses_success(),
+    }
+
     @router.post(
         "/login",
         name=f"auth:{auth_backend.name}.login",
@@ -93,9 +113,38 @@ def get_auth_router(
         responses=logout_responses,
     )
     async def logout(
-        user_token: Annotated[tuple["User", str], Depends(get_current_user_token)],
+        access_token: Annotated[
+            tuple["User", tuple[str, int]],
+            Depends(get_current_active_user_access_token),
+        ],
+        refresh_token: Annotated[
+            tuple[Optional["User"], tuple[Optional[str], Optional[int]]],
+            Depends(get_current_user_refresh_token),
+        ],
     ):
-        _, token = user_token
-        return await auth_backend.logout(token)
+        user = access_token[0]
+        access_token_info = access_token[1]
+        refresh_token_info = refresh_token[1]
+
+        return await auth_backend.logout(
+            user_id=user.id,
+            access_token_info=access_token_info,
+            refresh_token_info=refresh_token_info,
+        )
+
+    @router.post(
+        "/refresh",
+        name=f"auth:{auth_backend.name}.refresh",
+        responses=refresh_responses,
+    )
+    async def refresh(
+        refresh_token: Annotated[
+            tuple["User", tuple[str, int]],
+            Depends(get_current_active_user_refresh_token),
+        ],
+    ):
+        user, _ = refresh_token
+
+        return await auth_backend.login(user, is_refresh=True)
 
     return router

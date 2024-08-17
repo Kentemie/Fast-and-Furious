@@ -22,11 +22,11 @@ INVALID_CHARS_PATTERN = re.compile(r"[^0-9a-zA-Z_]")
 INVALID_LEADING_CHARS_PATTERN = re.compile(r"^[^a-zA-Z_]+")
 
 
-def name_to_variable_name(name: str) -> str:
+def name_to_variable_name(name: str, prefix: str) -> str:
     """Transform a backend name string into a string safe to use as variable name."""
     name = re.sub(INVALID_CHARS_PATTERN, "", name)
     name = re.sub(INVALID_LEADING_CHARS_PATTERN, "", name)
-    return name
+    return f"{prefix}_{name}"
 
 
 class Authenticator:
@@ -39,7 +39,7 @@ class Authenticator:
 
     def get_current_user_token(
         self,
-        required_token_type: str = settings.AUTH.ACCESS_TOKEN,
+        required_token_type: str,
         optional: bool = False,
         active: bool = True,
         verified: bool = True,
@@ -54,7 +54,7 @@ class Authenticator:
         async def current_user_token_dependency(*args, **kwargs):
             return await self._authenticate(
                 *args,
-                required_token_type=required_token_type,
+                token_type=required_token_type,
                 optional=optional,
                 active=active,
                 verified=verified,
@@ -66,7 +66,6 @@ class Authenticator:
 
     def get_current_user(
         self,
-        required_token_type: str = settings.AUTH.ACCESS_TOKEN,
         optional: bool = False,
         active: bool = True,
         verified: bool = True,
@@ -75,7 +74,6 @@ class Authenticator:
         """
         Return a dependency callable to retrieve currently authenticated user.
 
-        :param required_token_type: Token type required for authentication.
         :param optional: If `True`, `None` is returned if there is no authenticated user
         or if it doesn't pass the other requirements.
         Otherwise, throw `401 Unauthorized`. Defaults to `False`.
@@ -93,7 +91,7 @@ class Authenticator:
         async def current_user_dependency(*args, **kwargs):
             user, _ = await self._authenticate(
                 *args,
-                required_token_type=required_token_type,
+                token_type=settings.AUTH.ACCESS_TOKEN,
                 optional=optional,
                 active=active,
                 verified=verified,
@@ -104,26 +102,31 @@ class Authenticator:
 
         return current_user_dependency
 
-    # noinspection PyMethodMayBeStatic
-    async def _authenticate(
+    async def _authenticate(  # noqa
         self,
-        *args,
+        *args,  # noqa
         user_manager: "UserManager",
-        required_token_type: str,
+        token_type: str,
         optional: bool,
         active: bool,
         verified: bool,
         superuser: bool,
         **kwargs,
-    ) -> tuple[Optional["User"], Optional[str]]:
+    ) -> tuple[
+        Optional["User"],
+        tuple[Optional[str], Optional[int]],
+    ]:
         user: Optional["User"] = None
-        token: Optional[str] = kwargs.get(name_to_variable_name(auth_backend.name))
+        token: Optional[str] = kwargs.get(
+            name_to_variable_name(name=auth_backend.name, prefix=token_type)
+        )
+        token_exp: Optional[int] = None
 
         if token is not None:
-            user = await auth_backend.strategy.read_token(
+            user, token_exp = await auth_backend.strategy.read_token(
                 token=token,
                 user_manager=user_manager,
-                required_token_type=required_token_type,
+                required_token_type=token_type,
             )
 
         status_code = status.HTTP_401_UNAUTHORIZED
@@ -140,10 +143,9 @@ class Authenticator:
         if not user and not optional:
             raise HTTPException(status_code=status_code)
 
-        return user, token
+        return user, (token, token_exp)
 
-    # noinspection PyMethodMayBeStatic
-    def _get_dependency_signature(self) -> Signature:
+    def _get_dependency_signature(self) -> Signature:  # noqa
         """
         Generate a dynamic signature for the get_current_user dependency.
 
@@ -157,9 +159,18 @@ class Authenticator:
                 default=Depends(get_user_manager),
             ),
             Parameter(
-                name=name_to_variable_name(auth_backend.name),
+                name=name_to_variable_name(
+                    name=auth_backend.name, prefix=settings.AUTH.ACCESS_TOKEN
+                ),
                 kind=Parameter.POSITIONAL_OR_KEYWORD,
                 default=Depends(cast(Callable, auth_backend.transport.scheme)),
+            ),
+            Parameter(
+                name=name_to_variable_name(
+                    name=auth_backend.name, prefix=settings.AUTH.REFRESH_TOKEN
+                ),
+                kind=Parameter.POSITIONAL_OR_KEYWORD,
+                default=Depends(auth_backend.transport.get_cookie),
             ),
         ]
 
