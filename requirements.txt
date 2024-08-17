@@ -12,6 +12,7 @@ orjson==3.10.6
 pyjwt[crypto]==2.8.0
 pwdlib[argon2,bcrypt]==0.2.0
 makefun==1.15.4
+redis[hiredis]==5.0.8
 
 # Development
 black==24.4.2

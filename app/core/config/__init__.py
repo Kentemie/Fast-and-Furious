@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.core.utils import parse_cors
 
 from .db import Database
+from .redis import Redis
 from .api import Api
 from .auth import Authentication
 
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
 
     DATABASE: Database
+
+    REDIS: Redis
 
     API: Api = Api()
 
